@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MOEMEN ROYALE: ONLINE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Arial', sans-serif; }
+        #connection-ui { 
+            position: fixed; top: 20px; left: 20px; padding: 20px;
+            background: rgba(0,0,0,0.8); color: white; border: 2px solid #00f; z-index: 100;
+            border-radius: 10px;
+        }
+        input { padding: 10px; width: 200px; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; }
+        #status { color: #0f0; margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="connection-ui">
+        <div style="font-size: 20px; margin-bottom: 10px;">ONLINE MULTIPLAYER</div>
+        <div>YOUR ID: <span id="my-id">LOADING...</span></div>
+        <hr>
+        <input type="text" id="peer-id-input" placeholder="PASTE FRIEND ID HERE">
+        <button onclick="connectToFriend()">CONNECT TO FRIEND</button>
+        <div id="status">STATUS: STANDBY</div>
+    </div>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- NETWORKING ENGINE ---
+    const peer = new Peer(); 
+    let conn;
+    let remotePlayer;
+
+    peer.on('open', (id) => {
+        document.getElementById('my-id').innerText = id;
+    });
+
+    // When someone connects to YOU
+    peer.on('connection', (c) => {
+        conn = c;
+        setupDataHandling();
+        document.getElementById('status').innerText = "STATUS: FRIEND CONNECTED!";
+    });
+
+    // When YOU connect to someone else
+    window.connectToFriend = () => {
+        const friendId = document.getElementById('peer-id-input').value;
+        conn = peer.connect(friendId);
+        setupDataHandling();
+        document.getElementById('status').innerText = "STATUS: CONNECTING...";
+    };
+
+    function setupDataHandling() {
+        conn.on('open', () => {
+            document.getElementById('status').innerText = "STATUS: ONLINE";
+            if(!remotePlayer) spawnRemotePlayer();
+        });
+        conn.on('data', (data) => {
+            if(remotePlayer) {
+                remotePlayer.position.set(data.x, data.y, data.z);
+                remotePlayer.rotation.y = data.ry;
+            }
+        });
+    }
+
+    // --- GAME ENGINE ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({color: 0x4caf50}));
+    ground.rotation.x = -Math.PI/2;
+    scene.add(ground);
+
+    // Local Player (YOU)
+    const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.5), new THREE.MeshStandardMaterial({color: 0x0000ff}));
+    player.position.y = 1;
+    scene.add(player);
+
+    function spawnRemotePlayer() {
+        remotePlayer = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.5), new THREE.MeshStandardMaterial({color: 0xff0000}));
+        remotePlayer.position.y = 1;
+        scene.add(remotePlayer);
+    }
+
+    camera.position.set(0, 5, 10);
+    player.add(camera);
+
+    const keys = {};
+    window.onkeydown = (e) => keys[e.code] = true;
+    window.onkeyup = (e) => keys[e.code] = false;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const speed = 0.2;
+        if(keys['KeyW']) player.translateZ(-speed);
+        if(keys['KeyS']) player.translateZ(speed);
+        if(keys['KeyA']) player.rotation.y += 0.05;
+        if(keys['KeyD']) player.rotation.y -= 0.05;
+
+        // SEND YOUR POSITION TO FRIEND
+        if (conn && conn.open) {
+            conn.send({
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                ry: player.rotation.y
+            });
+        }
+
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html>
